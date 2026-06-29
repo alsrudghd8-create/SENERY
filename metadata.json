@@ -1,0 +1,6 @@
+{
+  "name": "오감 탐험대",
+  "description": "초등학교 오감(五感) 탐험대 인터랙티브 감각적 표현 학습 슬라이드",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
