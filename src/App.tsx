@@ -23,7 +23,11 @@ import {
   Send,
   Share2,
   ThumbsUp,
-  User
+  User,
+  Copy,
+  X,
+  ExternalLink,
+  Globe
 } from 'lucide-react';
 import { TOMATO_POEM_WORDS, MYSTERY_BOX_ITEMS, CLASSROOM_OBJECTS, FOOD_TEMPLATES } from './data';
 import { playClick, playSuccess, playIncorrect, playReveal, playFanfare } from './audio';
@@ -33,6 +37,39 @@ export default function App() {
   const [currentSlide, setCurrentSlide] = useState(0);
   const [bgmPlaying, setBgmPlaying] = useState(false);
   const bgmRef = useRef<HTMLAudioElement | null>(null);
+
+  // 18세 미만 학생도 로그인 없이 자유롭게 공유할 수 있는 링크 복사 및 가이드 기능
+  const [showShareToast, setShowShareToast] = useState(false);
+  const [showShareModal, setShowShareModal] = useState(false);
+
+  const handleShareSite = () => {
+    playClick();
+    setShowShareModal(true);
+  };
+
+  const handleCopyLink = async () => {
+    playClick();
+    const shareUrl = window.location.origin + window.location.pathname;
+    try {
+      await navigator.clipboard.writeText(shareUrl);
+      setShowShareToast(true);
+      setTimeout(() => setShowShareToast(false), 3000);
+    } catch (err) {
+      // Fallback
+      const textArea = document.createElement("textarea");
+      textArea.value = shareUrl;
+      document.body.appendChild(textArea);
+      textArea.select();
+      try {
+        document.execCommand('copy');
+        setShowShareToast(true);
+        setTimeout(() => setShowShareToast(false), 3000);
+      } catch (e) {
+        alert('주소를 복사해 주세요: ' + shareUrl);
+      }
+      document.body.removeChild(textArea);
+    }
+  };
 
   // MathJax typesetting effect on slide change
   useEffect(() => {
@@ -312,7 +349,20 @@ export default function App() {
 
   // State for Slide 4: Food Recipe Customizer
   const [selectedFoodId, setSelectedFoodId] = useState('maratang');
-  const [activeToppings, setActiveToppings] = useState<string[]>([]);
+  const [customSenses, setCustomSenses] = useState({
+    sight: '',
+    sound: '',
+    smell: '',
+    taste: '',
+    touch: ''
+  });
+  const [customPowers, setCustomPowers] = useState({
+    sight: 50,
+    sound: 50,
+    smell: 50,
+    taste: 50,
+    touch: 50
+  });
   const [customDishName, setCustomDishName] = useState('');
   const [recipeCompleted, setRecipeCompleted] = useState(false);
   const [recipeAuthor, setRecipeAuthor] = useState('');
@@ -390,19 +440,18 @@ export default function App() {
   const handleShareRecipe = () => {
     if (!recipeCompleted) return;
     if (!recipeAuthor.trim()) {
-      alert('만든이 이름을 입력해 주세요!');
+      alert('모둠 이름을 입력해 주세요!');
       playIncorrect();
       return;
     }
     
-    // Get currently selected toppings
-    const selectedToppingsList = currentFoodTemplate.toppings
-      .filter(t => activeToppings.includes(t.id))
-      .map(t => ({
-        name: t.name,
-        emoji: t.emoji,
-        sense: t.sense
-      }));
+    // Get custom toppings entered by children
+    const selectedToppingsList = [];
+    if (customSenses.sight.trim()) selectedToppingsList.push({ name: `시각 (눈): ${customSenses.sight}`, emoji: '👁️', sense: 'sight' });
+    if (customSenses.sound.trim()) selectedToppingsList.push({ name: `청각 (귀): ${customSenses.sound}`, emoji: '👂', sense: 'sound' });
+    if (customSenses.smell.trim()) selectedToppingsList.push({ name: `후각 (코): ${customSenses.smell}`, emoji: '👃', sense: 'smell' });
+    if (customSenses.taste.trim()) selectedToppingsList.push({ name: `미각 (입): ${customSenses.taste}`, emoji: '👅', sense: 'taste' });
+    if (customSenses.touch.trim()) selectedToppingsList.push({ name: `촉각 (손): ${customSenses.touch}`, emoji: '✋', sense: 'touch' });
 
     const finalDishName = customDishName.trim() || `${recipeAuthor}의 특별한 ${currentFoodTemplate.name}`;
     
@@ -436,7 +485,8 @@ export default function App() {
     });
 
     // Reset recipe design but keep success feedback
-    setActiveToppings([]);
+    setCustomSenses({ sight: '', sound: '', smell: '', taste: '', touch: '' });
+    setCustomPowers({ sight: 50, sound: 50, smell: 50, taste: 50, touch: 50 });
     setCustomDishName('');
     setRecipeCompleted(false);
 
@@ -486,34 +536,19 @@ export default function App() {
     setCommentInputs(prev => ({ ...prev, [recipeId]: '' }));
   };
 
-  const handleToggleTopping = (toppingId: string) => {
-    if (recipeCompleted) return;
-    playClick();
-    if (activeToppings.includes(toppingId)) {
-      setActiveToppings(activeToppings.filter(id => id !== toppingId));
-    } else {
-      setActiveToppings([...activeToppings, toppingId]);
-    }
-  };
-
   const calculateFoodPower = (senseKey: 'sight' | 'sound' | 'smell' | 'taste' | 'touch') => {
-    let base = currentFoodTemplate.basePower[senseKey];
-    currentFoodTemplate.toppings.forEach(topping => {
-      if (activeToppings.includes(topping.id) && topping.sense === senseKey) {
-        base += topping.powerBonus;
-      }
-    });
-    return Math.min(100, base);
+    return customPowers[senseKey];
   };
 
   const handleCompleteRecipe = () => {
-    if (activeToppings.length === 0) {
-      alert('최소한 한 개 이상의 감각 토핑을 추가해주세요!');
+    const hasAnySense = Object.values(customSenses).some(text => typeof text === 'string' && text.trim() !== '');
+    if (!hasAnySense) {
+      alert('최소한 한 개 이상의 감각 설명 내용을 입력해주세요!');
       playIncorrect();
       return;
     }
     if (!recipeAuthor.trim()) {
-      alert('만든이 이름을 입력해 주세요!');
+      alert('모둠 이름을 입력해 주세요!');
       playIncorrect();
       return;
     }
@@ -528,7 +563,8 @@ export default function App() {
   };
 
   const handleResetRecipe = () => {
-    setActiveToppings([]);
+    setCustomSenses({ sight: '', sound: '', smell: '', taste: '', touch: '' });
+    setCustomPowers({ sight: 50, sound: 50, smell: 50, taste: 50, touch: 50 });
     setCustomDishName('');
     setRecipeCompleted(false);
     playClick();
@@ -630,6 +666,16 @@ export default function App() {
             >
               {bgmPlaying ? <Volume2 className="w-3.5 h-3.5 animate-bounce" /> : <VolumeX className="w-3.5 h-3.5" />}
               <span>{bgmPlaying ? 'BGM 켜짐' : 'BGM 꺼짐'}</span>
+            </button>
+
+            {/* 18세 미만 학생도 로그인 필요없이 공유 가능한 사이트 링크 공유 버튼 */}
+            <button 
+              onClick={handleShareSite}
+              className="flex items-center gap-2 px-3 py-1.5 text-xs font-black border-2 border-black rounded-lg bg-[#FFD32D] text-black shadow-[2px_2px_0px_rgba(0,0,0,1)] hover:bg-[#ffe066] transition-all cursor-pointer"
+              title="18세 미만 학생도 로그인 없이 쉽게 링크로 친구와 공유할 수 있어요!"
+            >
+              <Share2 className="w-3.5 h-3.5" />
+              <span>사이트 공유</span>
             </button>
           </div>
         </header>
@@ -1694,7 +1740,7 @@ export default function App() {
                     외계인 친구를 위한 <span className="text-[#FF4757] underline decoration-black decoration-wavy decoration-2">환상의 감각 레시피</span>를 설계하라!
                   </h2>
                   <p className="text-neutral-700 text-sm font-bold mb-3">
-                    원하는 메인 요리를 고르고 다양한 감각 토핑을 올려 오감 지수가 변화하는 모습을 시뮬레이션해 보세요!
+                    원하는 메인 요리를 고르고, 각 감각(시각, 청각, 후각, 미각, 촉각) 설명 칸을 비워두었으니 직접 입력해 감각 레시피를 만들어 보세요!
                   </p>
                 </div>
 
@@ -1705,7 +1751,8 @@ export default function App() {
                       key={food.id}
                       onClick={() => {
                         setSelectedFoodId(food.id);
-                        setActiveToppings([]);
+                        setCustomSenses({ sight: '', sound: '', smell: '', taste: '', touch: '' });
+                        setCustomPowers({ sight: 50, sound: 50, smell: 50, taste: 50, touch: 50 });
                         setRecipeCompleted(false);
                         playClick();
                       }}
@@ -1724,49 +1771,170 @@ export default function App() {
                 {/* Recipe Workspace */}
                 <div className="grid grid-cols-1 md:grid-cols-12 gap-5 items-stretch">
                   
-                  {/* Left Side: Adding Topping Controls */}
-                  <div className="md:col-span-7 bg-white p-4 rounded-xl border-4 border-black shadow-[6px_6px_0px_rgba(0,0,0,1)] flex flex-col justify-between gap-3 min-h-[260px]">
+                  {/* Left Side: Custom Sensory Inputs */}
+                  <div className="md:col-span-7 bg-white p-4 rounded-xl border-4 border-black shadow-[6px_6px_0px_rgba(0,0,0,1)] flex flex-col justify-between gap-4">
                     <div>
-                      <h3 className="text-xs font-black text-neutral-500 mb-2 flex items-center gap-1.5 uppercase tracking-wider">
+                      <h3 className="text-xs font-black text-neutral-500 mb-3 flex items-center gap-1.5 uppercase tracking-wider">
                         <ChefHat className="w-4 h-4 text-[#FF4757]" />
-                        <span>맛있는 {currentFoodTemplate.emoji} {currentFoodTemplate.name} 감각 토핑 추가</span>
+                        <span>나만의 비밀 레시피 감각 입력하기 🕵️‍♂️ (내용을 적고 지수를 조절해 봐요!)</span>
                       </h3>
 
-                      <div className="grid grid-cols-2 gap-2">
-                        {currentFoodTemplate.toppings.map((topping) => {
-                          const isAdded = activeToppings.includes(topping.id);
-                          return (
-                            <button
-                              key={topping.id}
+                      <div className="flex flex-col gap-3">
+                        {/* Sight */}
+                        <div className="flex flex-col gap-1 border-b border-dashed border-neutral-100 pb-2">
+                          <div className="flex justify-between items-center">
+                            <span className="text-xs font-black text-[#FF4757] flex items-center gap-1">
+                              👁️ 시각 (눈)
+                            </span>
+                            <span className="text-[10px] font-black font-mono text-neutral-400">
+                              파워 지수: {customPowers.sight}
+                            </span>
+                          </div>
+                          <div className="flex gap-3 items-center">
+                            <input
+                              type="text"
                               disabled={recipeCompleted}
-                              onClick={() => handleToggleTopping(topping.id)}
-                              className={`p-2.5 rounded-lg border-2 border-black text-left transition-all flex items-start gap-2 relative cursor-pointer ${
-                                recipeCompleted 
-                                  ? 'opacity-60 cursor-default'
-                                  : 'hover:scale-[1.01]'
-                              } ${
-                                isAdded
-                                  ? 'bg-[#FFD32D]/20 text-neutral-950 shadow-[3px_3px_0px_rgba(0,0,0,1)]'
-                                  : 'bg-[#FAF7F2] hover:bg-white text-neutral-700'
-                              }`}
-                            >
-                              <span className="text-xl mt-0.5">{topping.emoji}</span>
-                              <div className="flex-1 pr-5">
-                                <p className="text-[10px] font-black uppercase text-neutral-500 tracking-wider">
-                                  {topping.sense === 'sight' ? '시각' : topping.sense === 'sound' ? '청각' : topping.sense === 'smell' ? '후각' : '미각'} 토핑 (+{topping.powerBonus})
-                                </p>
-                                <h4 className="text-xs font-black leading-tight text-neutral-900 mt-0.5">{topping.name.split(': ')[1]}</h4>
-                                <p className="text-[9px] font-bold text-neutral-500 mt-0.5">{topping.description}</p>
-                              </div>
+                              value={customSenses.sight}
+                              onChange={(e) => setCustomSenses({ ...customSenses, sight: e.target.value })}
+                              placeholder="어떻게 보이나요?"
+                              className="flex-grow px-2.5 py-1.5 text-xs font-bold border-2 border-black rounded-lg bg-[#FAF7F2] focus:bg-white text-black outline-none transition-all"
+                            />
+                            <input
+                              type="range"
+                              min="0"
+                              max="100"
+                              disabled={recipeCompleted}
+                              value={customPowers.sight}
+                              onChange={(e) => setCustomPowers({ ...customPowers, sight: parseInt(e.target.value) })}
+                              className="w-24 accent-[#FF4757]"
+                            />
+                          </div>
+                        </div>
 
-                              {isAdded && (
-                                <div className="absolute top-2 right-2 bg-[#FFD32D] border-2 border-black text-black p-0.5 rounded-full">
-                                  <Check className="w-2.5 h-2.5 stroke-[3px]" />
-                                </div>
-                              )}
-                            </button>
-                          );
-                        })}
+                        {/* Sound */}
+                        <div className="flex flex-col gap-1 border-b border-dashed border-neutral-100 pb-2">
+                          <div className="flex justify-between items-center">
+                            <span className="text-xs font-black text-[#1E90FF] flex items-center gap-1">
+                              👂 청각 (귀)
+                            </span>
+                            <span className="text-[10px] font-black font-mono text-neutral-400">
+                              파워 지수: {customPowers.sound}
+                            </span>
+                          </div>
+                          <div className="flex gap-3 items-center">
+                            <input
+                              type="text"
+                              disabled={recipeCompleted}
+                              value={customSenses.sound}
+                              onChange={(e) => setCustomSenses({ ...customSenses, sound: e.target.value })}
+                              placeholder="무슨 소리가 나나요?"
+                              className="flex-grow px-2.5 py-1.5 text-xs font-bold border-2 border-black rounded-lg bg-[#FAF7F2] focus:bg-white text-black outline-none transition-all"
+                            />
+                            <input
+                              type="range"
+                              min="0"
+                              max="100"
+                              disabled={recipeCompleted}
+                              value={customPowers.sound}
+                              onChange={(e) => setCustomPowers({ ...customPowers, sound: parseInt(e.target.value) })}
+                              className="w-24 accent-[#1E90FF]"
+                            />
+                          </div>
+                        </div>
+
+                        {/* Smell */}
+                        <div className="flex flex-col gap-1 border-b border-dashed border-neutral-100 pb-2">
+                          <div className="flex justify-between items-center">
+                            <span className="text-xs font-black text-[#2ED573] flex items-center gap-1">
+                              👃 후각 (코)
+                            </span>
+                            <span className="text-[10px] font-black font-mono text-neutral-400">
+                              파워 지수: {customPowers.smell}
+                            </span>
+                          </div>
+                          <div className="flex gap-3 items-center">
+                            <input
+                              type="text"
+                              disabled={recipeCompleted}
+                              value={customSenses.smell}
+                              onChange={(e) => setCustomSenses({ ...customSenses, smell: e.target.value })}
+                              placeholder="무슨 향이 나나요?"
+                              className="flex-grow px-2.5 py-1.5 text-xs font-bold border-2 border-black rounded-lg bg-[#FAF7F2] focus:bg-white text-black outline-none transition-all"
+                            />
+                            <input
+                              type="range"
+                              min="0"
+                              max="100"
+                              disabled={recipeCompleted}
+                              value={customPowers.smell}
+                              onChange={(e) => setCustomPowers({ ...customPowers, smell: parseInt(e.target.value) })}
+                              className="w-24 accent-[#2ED573]"
+                            />
+                          </div>
+                        </div>
+
+                        {/* Taste */}
+                        <div className="flex flex-col gap-1 border-b border-dashed border-neutral-100 pb-2">
+                          <div className="flex justify-between items-center">
+                            <span className="text-xs font-black text-[#FFD32D] flex items-center gap-1">
+                              👅 미각 (입)
+                            </span>
+                            <span className="text-[10px] font-black font-mono text-neutral-400">
+                              파워 지수: {customPowers.taste}
+                            </span>
+                          </div>
+                          <div className="flex gap-3 items-center">
+                            <input
+                              type="text"
+                              disabled={recipeCompleted}
+                              value={customSenses.taste}
+                              onChange={(e) => setCustomSenses({ ...customSenses, taste: e.target.value })}
+                              placeholder="어떤 맛이 나나요?"
+                              className="flex-grow px-2.5 py-1.5 text-xs font-bold border-2 border-black rounded-lg bg-[#FAF7F2] focus:bg-white text-black outline-none transition-all"
+                            />
+                            <input
+                              type="range"
+                              min="0"
+                              max="100"
+                              disabled={recipeCompleted}
+                              value={customPowers.taste}
+                              onChange={(e) => setCustomPowers({ ...customPowers, taste: parseInt(e.target.value) })}
+                              className="w-24 accent-[#FFD32D]"
+                            />
+                          </div>
+                        </div>
+
+                        {/* Touch */}
+                        <div className="flex flex-col gap-1">
+                          <div className="flex justify-between items-center">
+                            <span className="text-xs font-black text-[#A020F0] flex items-center gap-1">
+                              ✋ 촉각 (손)
+                            </span>
+                            <span className="text-[10px] font-black font-mono text-neutral-400">
+                              파워 지수: {customPowers.touch}
+                            </span>
+                          </div>
+                          <div className="flex gap-3 items-center">
+                            <input
+                              type="text"
+                              disabled={recipeCompleted}
+                              value={customSenses.touch}
+                              onChange={(e) => setCustomSenses({ ...customSenses, touch: e.target.value })}
+                              placeholder="만지면 어떤 느낌인가요?"
+                              className="flex-grow px-2.5 py-1.5 text-xs font-bold border-2 border-black rounded-lg bg-[#FAF7F2] focus:bg-white text-black outline-none transition-all"
+                            />
+                            <input
+                              type="range"
+                              min="0"
+                              max="100"
+                              disabled={recipeCompleted}
+                              value={customPowers.touch}
+                              onChange={(e) => setCustomPowers({ ...customPowers, touch: parseInt(e.target.value) })}
+                              className="w-24 accent-[#A020F0]"
+                            />
+                          </div>
+                        </div>
+
                       </div>
                     </div>
 
@@ -1776,13 +1944,13 @@ export default function App() {
                         {/* Author Input Field */}
                         <div className="flex gap-2 items-center">
                           <div className="w-1/3 flex items-center gap-1.5 bg-[#FAF7F2] px-2.5 py-2 border-2 border-black rounded-lg shadow-[2px_2px_0px_rgba(0,0,0,1)]">
-                            <span className="text-[11px] font-black shrink-0 text-neutral-500">🧑‍🍳 만든이:</span>
+                            <span className="text-[11px] font-black shrink-0 text-neutral-500">🧑‍🍳 모둠 이름:</span>
                             <input
                               type="text"
                               disabled={recipeCompleted}
                               value={recipeAuthor}
                               onChange={(e) => setRecipeAuthor(e.target.value)}
-                              placeholder="이름"
+                              placeholder="모둠 이름"
                               className="w-full text-xs font-bold bg-transparent text-black outline-none border-b border-transparent focus:border-black/20"
                             />
                           </div>
@@ -2139,7 +2307,9 @@ export default function App() {
                 {/* Footer buttons of slide */}
                 <div className="flex justify-between items-center mt-3 pt-4 border-t border-neutral-200 shrink-0">
                   <div className="text-xs text-neutral-600 font-extrabold">
-                    {activeToppings.length > 0 ? `활성화된 감각 단서: ${activeToppings.length}개` : '단서들을 마라탕/탕후루/치킨/감자튀김/떡볶이에 입혀보세요.'}
+                    {Object.values(customSenses).filter(text => typeof text === 'string' && text.trim() !== '').length > 0 
+                      ? `입력된 감각 설명: ${Object.values(customSenses).filter(text => typeof text === 'string' && text.trim() !== '').length}개` 
+                      : '감각들을 직접 마라탕/탕후루/치킨/감자튀김/떡볶이에 채워보세요.'}
                   </div>
                   <button
                     onClick={nextSlide}
@@ -2223,7 +2393,7 @@ export default function App() {
                 </div>
 
                 {/* Return button and navigation */}
-                <div className="flex justify-between items-center mt-4">
+                <div className="flex justify-between items-center mt-4 gap-4 flex-wrap">
                   <button
                     onClick={() => {
                       setCurrentSlide(0);
@@ -2235,6 +2405,15 @@ export default function App() {
                   >
                     <RotateCcw className="w-4 h-4" />
                     <span>처음부터 다시 수사하기</span>
+                  </button>
+
+                  <button
+                    onClick={handleShareSite}
+                    className="flex items-center gap-2 px-5 py-2.5 bg-[#FFD32D] hover:bg-[#ffe066] text-black font-black text-xs border-2 border-black rounded-lg shadow-[3px_3px_0px_rgba(0,0,0,1)] transition-all cursor-pointer"
+                    title="18세 미만 학생도 로그인 필요없이 링크만으로 손쉽게 공유가 가능합니다!"
+                  >
+                    <Share2 className="w-4 h-4" />
+                    <span>친구들과 이 사이트 공유하기 (18세 미만 가능) 🚀</span>
                   </button>
 
                   <div className="text-[10px] font-black text-neutral-500 tracking-widest font-mono">
@@ -2308,6 +2487,124 @@ export default function App() {
             </button>
           </div>
         </footer>
+
+        {/* Floating Toast Notification for Link Copying */}
+        <AnimatePresence>
+          {showShareToast && (
+            <motion.div
+              initial={{ opacity: 0, y: 50, scale: 0.9 }}
+              animate={{ opacity: 1, y: 0, scale: 1 }}
+              exit={{ opacity: 0, y: 20, scale: 0.9 }}
+              className="fixed bottom-24 right-8 z-50 bg-[#2ED573] text-black font-black text-xs px-5 py-3.5 border-3 border-black rounded-xl shadow-[4px_4px_0px_rgba(0,0,0,1)] flex items-center gap-2"
+            >
+              <Check className="w-4 h-4 text-black stroke-[3px]" />
+              <span>공유 링크가 복사되었습니다! 18세 미만 친구들도 로그인 없이 바로 즐길 수 있어요! 🚀</span>
+            </motion.div>
+          )}
+        </AnimatePresence>
+
+        {/* Site Share & Google-Login-Free Guide Modal */}
+        <AnimatePresence>
+          {showShareModal && (
+            <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+              <motion.div
+                initial={{ opacity: 0, scale: 0.95, y: 20 }}
+                animate={{ opacity: 1, scale: 1, y: 0 }}
+                exit={{ opacity: 0, scale: 0.95, y: 20 }}
+                className="bg-[#FAF7F2] text-[#2D2D2D] border-4 border-black shadow-[8px_8px_0px_rgba(0,0,0,1)] rounded-2xl w-full max-w-xl p-6 relative overflow-hidden flex flex-col gap-4"
+              >
+                {/* Close Button */}
+                <button
+                  onClick={() => { playClick(); setShowShareModal(false); }}
+                  className="absolute top-4 right-4 text-black hover:bg-neutral-200 p-1 rounded-lg border-2 border-black bg-white shadow-[2px_2px_0px_rgba(0,0,0,1)] active:translate-y-0.5 cursor-pointer z-10"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+
+                {/* Header */}
+                <div className="flex items-start gap-3">
+                  <div className="p-2 bg-[#FFD32D] border-2 border-black rounded-lg shadow-[2px_2px_0px_rgba(0,0,0,1)]">
+                    <Globe className="w-6 h-6 text-black" />
+                  </div>
+                  <div>
+                    <h3 className="text-lg font-black text-black leading-tight flex items-center gap-1.5">
+                      구글 로그인 없이 사이트 공유하기
+                    </h3>
+                    <p className="text-xs text-neutral-500 font-bold mt-1">
+                      구글 계정이 없는 학생들이나 18세 미만 청소년도 로그인 화면 없이 즉시 탐험을 시작할 수 있는 최적의 공유 방법을 안내해 드립니다.
+                    </p>
+                  </div>
+                </div>
+
+                {/* Link Copy Bar */}
+                <div className="bg-white border-2 border-black p-3.5 rounded-xl shadow-[3px_3px_0px_rgba(0,0,0,1)] flex flex-col gap-2 mt-1">
+                  <span className="text-[10px] font-black text-neutral-400 tracking-wider font-mono">현재 사이트 링크 (CURRENT SITE LINK)</span>
+                  <div className="flex items-center gap-2">
+                    <div className="bg-neutral-50 border border-neutral-300 p-2 rounded text-xs text-neutral-600 font-mono flex-grow overflow-x-auto whitespace-nowrap select-all py-2.5">
+                      {window.location.origin + window.location.pathname}
+                    </div>
+                    <button
+                      onClick={handleCopyLink}
+                      className="bg-[#FFD32D] hover:bg-yellow-400 border-2 border-black px-4 py-2.5 rounded-lg text-xs font-black shadow-[2px_2px_0px_rgba(0,0,0,1)] flex items-center gap-1.5 shrink-0 active:translate-y-0.5 cursor-pointer"
+                    >
+                      <Copy className="w-3.5 h-3.5" />
+                      <span>복사</span>
+                    </button>
+                  </div>
+                </div>
+
+                {/* Explanatory Guide Box */}
+                <div className="bg-[#FFECEC] border-2 border-[#FF4757] rounded-xl p-4 text-xs leading-relaxed flex flex-col gap-3">
+                  <div className="flex items-center gap-1.5 text-[#FF4757] font-black">
+                    <span className="text-sm">⚠️</span>
+                    <span>중요! 현재 미리보기 주소는 구글 로그인을 요구할 수 있습니다.</span>
+                  </div>
+                  <p className="text-neutral-700 font-medium">
+                    AI Studio의 기본 미리보기 주소(<code className="bg-white px-1.5 py-0.5 rounded border border-neutral-300 font-mono">ais-pre-...</code>)는 <strong>개발용 샌드박스 보안 링크</strong>이기 때문에, 접속 시 개발자의 구글 계정으로 로그인해야만 화면이 보일 수 있습니다.
+                  </p>
+
+                  <div className="border-t border-red-200/50 my-1"></div>
+
+                  <div className="flex flex-col gap-2.5">
+                    <p className="font-bold text-black flex items-center gap-1 text-[11px]">
+                      <Sparkles className="w-3.5 h-3.5 text-yellow-500 fill-yellow-500" />
+                      로그인 요구창 없이 완전히 무료로 공용 공개하는 2가지 해결책:
+                    </p>
+                    
+                    <ul className="flex flex-col gap-2 pl-1.5 list-none text-neutral-700">
+                      <li className="flex items-start gap-1.5">
+                        <span className="text-blue-500 font-black">1️⃣</span>
+                        <div>
+                          <strong className="text-neutral-900">우측 상단 'Deploy (배포)' 기능 사용하기 (가장 추천! ⭐)</strong>
+                          <p className="text-[11px] text-neutral-600 mt-0.5">
+                            AI Studio 화면 우측 상단의 <strong>Deploy</strong> 버튼을 눌러 Cloud Run에 배포하면, 구글 로그인이 전혀 필요 없는 <strong>영구적이고 완전히 공개된 공용 웹 주소</strong>가 새로 발급됩니다!
+                          </p>
+                        </div>
+                      </li>
+                      <li className="flex items-start gap-1.5">
+                        <span className="text-blue-500 font-black">2️⃣</span>
+                        <div>
+                          <strong className="text-neutral-900">소스코드 ZIP / GitHub으로 내보내기</strong>
+                          <p className="text-[11px] text-neutral-600 mt-0.5">
+                            우측 상단 설정(톱니바퀴) 아이콘 클릭 후 <strong>Export</strong>를 사용하여 소스코드를 ZIP으로 받거나 GitHub에 업로드한 뒤, Vercel/Netlify 같은 웹 호스팅 플랫폼에 무료 등록하면 구글 아이디 없이 전 세계 누구나 1초 만에 바로 쓸 수 있습니다!
+                          </p>
+                        </div>
+                      </li>
+                    </ul>
+                  </div>
+                </div>
+
+                {/* Close Dialog Button */}
+                <button
+                  onClick={() => { playClick(); setShowShareModal(false); }}
+                  className="bg-[#1A1A1A] hover:bg-neutral-800 text-white font-black text-xs py-3.5 rounded-xl border-2 border-black shadow-[3px_3px_0px_rgba(0,0,0,1)] text-center transition-all cursor-pointer active:translate-y-0.5"
+                >
+                  확인 완료! 학생들과 공유하러 가기 🚀
+                </button>
+              </motion.div>
+            </div>
+          )}
+        </AnimatePresence>
 
       </div>
     </div>
